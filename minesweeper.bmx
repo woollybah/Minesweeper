@@ -17,6 +17,7 @@ Import brl.standardio
 Import brl.map
 Import brl.math
 Import brl.random
+Import brl.freetypefont
 
 ? Not nx
 EnablePolledInput
@@ -136,6 +137,7 @@ Type TResources
 
 	Field textures:TMap = New TMap
 	Field cellTextures:TIntMap = New TIntMap
+	Field font:TFont
 	
 	Method LoadROMFS(renderer:TSDLRenderer)
 		' Cell textures
@@ -161,6 +163,9 @@ Type TResources
 		textures.Insert("arrowLeftButton", LoadTexture(renderer, "arrowLeftButton"))
 		textures.Insert("minusButton", LoadTexture(renderer, "minusButton"))
 		textures.Insert("plusButton", LoadTexture(renderer, "plusButton"))
+
+		' Load font
+		LoadFont("Pixeled.ttf")
 	End Method
 	
 	Method LoadTexture:TSDLTexture(renderer:TSDLRenderer, name:String)
@@ -175,6 +180,15 @@ Type TResources
 		Return texture
 	End Method
 	
+	Method LoadFont(name:String)
+		?nx
+		Local fontPath:String = "romfs:/" + name
+		?Not nx
+		Local fontPath:String = "romfs/" + name
+		?
+		font = TFreeTypeFont.Load(fontPath, 20, SMOOTHFONT)
+	End Method
+	
 	Method GetTexture:TSDLTexture(name:String)
 		Return TSDLTexture(textures.ValueForKey(name))
 	End Method
@@ -183,7 +197,8 @@ Type TResources
 		Return TSDLTexture[](cellTextures.ValueForKey(state))[order]
 	End Method
 	
-	Method GetFont:Object()
+	Method GetFont:TFont()
+		Return font
 	End Method
 	
 End Type
@@ -268,8 +283,8 @@ Type TGameScene
 		buttons :+ [button]
 	End Method
 	
-	Method Add(text:TTextObject)
-		texts :+ [text]
+	Method Add(Text:TTextObject)
+		texts :+ [Text]
 	End Method
 	
 	Method HandleClick(touchInfo:TTouchInfo)
@@ -318,6 +333,7 @@ Type TGameScene
 	End Method
 	
 	Function Restart(handle:Object)
+		TGameScene(handle).board.needRestart = True
 		TGameScene(handle).board.Restart()
 	End Function
 	
@@ -355,7 +371,7 @@ Type TBoard
 	
 	Field resources:TResources
 	
-	Field needRestart:Int
+	Field needRestart:Int = True
 	Field gameOver:Int
 	Field needHardRestart:Int
 	
@@ -498,7 +514,7 @@ Type TBoard
 	Method CheckState:Int()
 		flagCount = 0
 		Local allFlagsCorrect:Int = True
-		Local allCellsOppened:Int = True
+		Local allCellsOpened:Int = True
 		
 		For Local i:Int = 0 Until boardWidth * boardHeight
 			If cells[i].GetState() = STATE_FLAGGED Then
@@ -509,7 +525,7 @@ Type TBoard
 			End If
 			
 			If cells[i].nearMinesCount <> 9 And cells[i].GetState() <> STATE_OPENED Then
-				allCellsOppened = False
+				allCellsOpened = False
 			End If
 		Next
 		
@@ -518,8 +534,8 @@ Type TBoard
 		Else
 			allFlagsCorrect = False
 		End If
-		'allFlagsCorrect = (allFlagsCorrect) ? FlagCount == MineCount ? True : False : False;
-		Return allCellsOppened Or allFlagsCorrect
+		
+		Return allCellsOpened Or allFlagsCorrect
 	End Method
 	
 	Function Action(handle:Object)
@@ -751,8 +767,8 @@ Type TWidget
 		buttons :+ [button]
 	End Method
 	
-	Method Add(text:TTextObject)
-		texts :+ [text]
+	Method Add(Text:TTextObject)
+		texts :+ [Text]
 	End Method
 	
 	Method HandleTouch(touchInfo:TTouchInfo)
@@ -784,15 +800,15 @@ Type TSettingsWidget Extends TWidget
 		Super.New(x, y, w, h)
 		
 		Local textObject:TTextObject = New TTextObject(x+w/2, y+45, res.GetFont())
-		textObject.text = "PAUSE"
+		textObject.Text = "PAUSE"
 		Add(textObject)
 		
 		textObject = New TTextObject(x+w/2, y+120, res.GetFont())
-		textObject.text = "Difficulty"
+		textObject.Text = "Difficulty"
 		Add(textObject)
 		
 		textObject = New TTextObject(x+w/2, y+270, res.GetFont())
-		textObject.text = "Press + to"
+		textObject.Text = "Press + to"
 		Add(textObject)
 		
 		textObject = New TTextObject(x+w/2, y+305, res.GetFont())
@@ -800,7 +816,7 @@ Type TSettingsWidget Extends TWidget
 		Add(textObject)
 		
 		textObject = New TTextObject(x+w/2, y+175, res.GetFont())
-		textObject.text = TGlobals.difficulty
+		textObject.Text = TGlobals.difficulty
 		Add(textObject)
 		
 		Local button:TButton = New TButton(x + w - 70, y + 20, 50, 50, "escButton")
@@ -831,7 +847,7 @@ Type TSettingsWidget Extends TWidget
 		If TGlobals.difficulty > 4 Then
 			TGlobals.difficulty = 4
 		End If
-		TTextObject(handle).text = TGlobals.difficulty
+		TTextObject(handle).Text = TGlobals.difficulty
 	End Function
 	
 	Function DecreaseDifficulty(handle:Object)
@@ -839,23 +855,28 @@ Type TSettingsWidget Extends TWidget
 		If TGlobals.difficulty < 1 Then
 			TGlobals.difficulty = 1
 		End If
-		TTextObject(handle).text = TGlobals.difficulty
+		TTextObject(handle).Text = TGlobals.difficulty
 	End Function
 	
 End Type
 
 Type TTextObject Extends TGraphicalObject
 
-	Field text:String
+	Field Text:String
 
 	Field centerX:Int
 	Field centerY:Int
 	
 	Field lastText:String
 	
-	Method New(x:Int, y:Int, font:Object)
+	Field font:TFont
+	Field texture:TSDLTexture
+	
+	Method New(x:Int, y:Int, font:TFont)
 		centerX = x
 		centerY = y
+		Self.font = font
+		SetVisible(True)
 	End Method
 	
 	Method Move(x:Int, y:Int)
@@ -866,7 +887,69 @@ Type TTextObject Extends TGraphicalObject
 	
 	Method Draw(renderer:TSDLRenderer)
 		If IsVisible() Then
-			Print "text"
+			If lastText <> Text Then
+				If texture Then
+					texture.Destroy()
+				End If
+
+				w = 0
+				h = font.Height()
+				
+				For Local n:Int=0 Until Text.length
+					Local i:Int=font.CharToGlyph( Text[n] )
+					If i<0 Continue
+					w :+ font.LoadGlyph(i).Advance()
+				Next
+
+
+				Local textSurface:TSDLSurface = TSDLSurface.CreateRGBWithFormat(w, h, 32, SDL_PIXELFORMAT_ARGB8888)
+
+				textSurface.Lock()
+
+				Local dst:Byte Ptr = textSurface.Pixels()
+				Local offset:Int
+
+				For Local n:Int=0 Until Text.length
+					Local i:Int=font.CharToGlyph( Text[n] )
+					If i<0 Continue
+					Local glyph:TGlyph = font.LoadGlyph(i)
+					
+					Local srcPix:TPixmap = TPixmap(glyph.Pixels())
+					If Not srcPix Then
+						offset :+ glyph.Advance()
+						Continue
+					End If
+					Local src:Byte Ptr = srcPix.pixels
+					Local dstPitch:Int = textSurface.Pitch()
+					Local width:Int = glyph.Advance()
+				
+					For Local y:Int = 0 Until srcPix.Height
+					
+						Local srcRowPtr:Byte Ptr = src + y * srcPix.pitch
+						Local dstRowPtr:Byte Ptr = dst + y * dstPitch + offset * 4
+						
+						For Local x:Int = 0 Until srcPix.Width
+							Local pixel:Byte Ptr = dstRowPtr + x * 4
+							
+							pixel[0] = r
+							pixel[1] = g
+							pixel[2] = b
+							pixel[3] = (srcRowPtr + x)[0]
+						Next
+					Next
+					
+					offset :+ width
+				Next
+				textSurface.Unlock()
+
+				
+				texture = renderer.CreateTextureFromSurface(textSurface)
+				
+				lastText = Text 
+			End If
+			
+			renderer.Copy(texture, -1, -1, -1, -1, centerX - w / 2, centerY - h / 2, w, h) 
+
 		End If
 	End Method
 	
@@ -889,9 +972,9 @@ Type TGameOverWidget Extends TWidget
 	Method Show(value:Int)
 		isVisible = True
 		If value Then
-    		texts[0].text = "YOU WON"
+    		texts[0].Text = "YOU WON"
 		Else
-			texts[0].text = "GAME OVER"
+			texts[0].Text = "GAME OVER"
 		End If
 	End Method
 	
